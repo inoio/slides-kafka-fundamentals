@@ -4,20 +4,231 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-		<title>reveal.js</title>
+		<title>Kafka Fundamentals</title>
+
+		<meta name="description" content="A presentation about Apache Kafka, covering basic knowledge everyone using Kafka for event collaboration should have.">
+		<meta name="author" content="Martin Grotzke, inoio gmbh">
 
 		<link rel="stylesheet" href="dist/reset.css">
 		<link rel="stylesheet" href="dist/reveal.css">
-		<link rel="stylesheet" href="dist/theme/black.css">
+		<link rel="stylesheet" href="dist/theme/moon.css" id="theme">
 
 		<!-- Theme used for syntax highlighted code -->
 		<link rel="stylesheet" href="plugin/highlight/monokai.css">
+
+		<!-- Printing and PDF exports -->
+		<script>
+      var link = document.createElement( 'link' );
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+      document.getElementsByTagName( 'head' )[0].appendChild( link );
+    </script>
+
+		<style type="text/css">
+			code  {
+				color: #ccc;
+			}
+		</style>
+
 	</head>
 	<body>
+
 		<div class="reveal">
 			<div class="slides">
-				<section>Slide 1</section>
-				<section>Slide 2</section>
+				<section>
+					<h1>Kafka Fundamentals</h1>
+					<p>
+						<small>
+							This is about producers, consumers and the cluster itself, i.e. topic partitions, replicas etc.<br/>
+							It's <em>not</em> about e.g. Kafka Connect, Kafka Streams or  3rd party client libraries like spring-kafka or reactor-kafka.
+						</small>
+					</p>
+					<aside class="notes">
+						<ul>
+							<li>presentation mode = F11</li>
+							<li>change font size: CTRL + mouse wheel (CTRL + Plus in normal view)</li>
+							<li>switch tab: CTRL + Tab</li>
+						</ul>
+					</aside>
+				</section>
+				<section>
+					<h2>agenda</h2>
+					<ol>
+						<li>High level overview</li>
+						<li>Kafka cluster</li>
+						<li>Producers</li>
+						<li>Consumers</li>
+					</ol>
+				</section>
+				<section>
+					<section>
+						<h2>high level overview</h2>
+					</section>
+					<section>
+						<h3>what is kafka?</h3>
+						<p>Kafka is an event streaming platform, combining three key capabilities:</p>
+						<ol>
+							<li>To <em>publish</em> (write) and <em>subscribe to</em> (read) streams of events</li>
+							<li>To <em>store</em> streams of events durably and reliably for as long as you want</li>
+							<li>To <em>process</em> streams of events as they occur or retrospectively</li>
+						</ol>
+						<aside class="notes">
+							<ul>
+								<li>it's pub/sub, not point to point, i.e. not a message queue</li>
+							</ul>
+							note: source https://kafka.apache.org/intro
+						</aside>
+					</section>
+					<section>
+						<h3>it's a log: an ordered, persistent sequence of events</h3>
+						<div><img src="img/log-of-records.svg" alt="log"></div>
+					</section>
+					<section>
+						<h3>events are organized in topics</h3>
+						<div><img src="img/topics.svg" alt="topics"></div>
+					</section>
+					<section>
+						<h3>topics are split into partitions</h3>
+						<div><img src="img/partitions.svg" alt="partitions"></div>
+					</section>
+					<section>
+						<h3>producers write to topic partitions</h3>
+						<div><img src="img/producer.svg" alt="producer"></div>
+					</section>
+					<section>
+						<h3>consumers read from topic partitions</h3>
+						<div><img src="img/consumer.svg" alt="consumer"></div>
+					</section>
+
+					<section>
+						<h3>Compacted Topics</h3>
+						<div><img width="50%" src="img/compacted-topic.svg" alt="compacted topic"></div>
+						<p><small><code>cleanup.policy=compact</code> (default: "delete")</small></p>
+						<p style="font-size: 70%">
+							<em>"Log compaction ensures that Kafka will always retain at least the last known value for each message key within the log of data for a single topic partition."</em> (<a href="https://kafka.apache.org/documentation/#compaction">Kafka docs</a>)
+						</p>
+					</section>
+
+					<section>
+						<h3>that's it?</h3>
+					</section>
+				</section>
+				<section>
+					<section>
+						<h2>kafka cluster</h2>
+					</section>
+					<section>
+						<h3>replicated logs &mdash; leaders and replicas</h3>
+						<div style="margin-left: -3em"><img width="70%" src="img/leaders-and-replicas.svg" alt="leaders and replicas"></div>
+						<aside class="notes">
+							<ul style="font-size: 90%">
+								<li>Each partition is replicated across a configurable number of servers for fault-tolerance. Each of these replicas is designated as either a leader or a follower.</li>
+								<li>A leader replica is responsible for all read and write requests for a given partition. It receives data from producers, appends it to its local log, and sends the new data to its followers.</li>
+								<li>Follower replicas replicate the leader, they just receive data and maintain a copy of it.</li>
+								<li>Kafka guarantees, that replicas are placed on different brokers</li>
+							</ul>
+						</aside>
+					</section>
+					<section>
+						<h3>replicated logs &mdash; broker config</h3>
+						<div><img width="40%" src="img/leaders-and-replicas-2.svg" alt="leaders and replicas"></div>
+						<div style="font-size: 70%">
+							<ul>
+								<li class="fragment fade-up"><code>num.partitions=3</code> &ndash; default number of log partitions per topic (default: 1)</li>
+								<li class="fragment fade-up"><code>default.replication.factor=3</code> &ndash; default replication factors for automatically created topics (Kafka default: 1, MSK default: 3 for 3-AZ clusters, 2 for 2-AZ clusters)</li>
+								<li class="fragment fade-up"><code>log.retention.hours</code> &ndash; time to keep a log file (default: 168 = 7d)</li>
+								<li class="fragment fade-up"><code>auto.create.topics.enable</code> &ndash; allow automatic topic creation on the broker when subscribing to or assigning a topic (Kafka default: true, MSK default: false)</li>
+							</ul>
+							<p>
+								<small>
+									source:
+									<a href="https://kafka.apache.org/documentation/#config">Kafka config</a>
+									/ <a href="https://docs.aws.amazon.com/msk/latest/developerguide/msk-default-configuration.html">MSK default config</a>
+								</small>
+							</p>
+						</div>
+					</section>
+
+					<section>
+						<h3>replicated logs &mdash; topic creation/config</h3>
+						<div><img width="40%" src="img/leaders-and-replicas-2.svg" alt="leaders and replicas"></div>
+
+						<p>$ bin/kafka-topics.sh --create --topic my-topic \<br/>
+							--partitions 5 \<br/>
+							--replication-factor 3 \<br/>
+							--config retention.ms=864000000
+						</p>
+						<aside class="notes">
+							864000000ms = 10d
+						</aside>
+					</section>
+
+					<section>
+						<h3>replicated logs &mdash; in-sync replicas (ISR)</h3>
+						<div><img width="80%" src="img/insync-replicas.svg" alt="insync-replicas"></div>
+						<div style="font-size: 80%">
+							<ul>
+								<li class="fragment fade-up"><code>min.insync.replicas</code> &ndash; the minimum number of replicas that must acknowledge a write to be considered successful, if used with "<code>acks=all</code>" (Kafka default: 1, MSK default: 2 for 3-AZ clusters, 1 for 2-AZ clusters)</li>
+								<li class="fragment fade-up">
+									A typical scenario would be <code>replication factor 3</code>,
+									<code>min.insync.replicas=2</code>,
+									and produce with <code>acks=all</code>
+								</li>
+							</ul>
+						</div>
+					</section>
+
+					<section>
+						<h3>leader election</h3>
+						<div><img width="60%" src="img/broker-unavailable.svg" alt="broker unavailable"></div>
+						<ul>
+							<li>Is triggered when a leader replica fails, or when a new replica is added to a partition</li>
+							<li>Controlled by the Kafka broker that acts as the (*active) controller for the cluster</li>
+						</ul>
+					</section>
+
+					<section>
+						<h3>leader election - process</h3>
+
+						<ol style="font-size: 80%">
+							<li>The controller sends a request to all replicas of a partition to vote for a new leader.</li>
+							<li>Each replica checks its local state and compares it to the state of the other replicas.</li>
+							<li>The replica with the most up-to-date state is elected as the leader.</li>
+							<li>If there is a tie, the replica with the lowest ID is elected as the leader.</li>
+						</ol>
+					</section>
+
+					<section>
+						<h3>leader election - related config</h3>
+						<div>
+							<ul style="font-size: 80%">
+								<li><code>replication.factor</code> &ndash; the more replicas, the more fault-tolerant the partition is</li>
+								<li><code>min.insync.replicas</code> &ndash; helps prevent data loss in case of leader failure</li>
+								<li>
+									<code>unclean.leader.election.enable</code> &ndash; controls whether the leader can be elected from an out-of-sync replica
+									&ndash; i.e. from CAP it's AP vs CP (Kafka default: false, MSK default: true)
+								</li>
+							</ul>
+						</div>
+					</section>
+
+					<section>
+						<h3>that's the cluster (?)</h3>
+					</section>
+
+				</section>
+				<!--section>
+					<h3>don't forget configs</h3>
+					<div>
+						<ul>
+							<li><code class="foo">offsets.topic.replication.factor</code> - consumer offsets</li>
+							<li><code>min.insync.replicas</code> - producer consistency / durability</li>
+							<li><code>log.retention.hours</code> - Default:	168</li>
+						</ul>
+					</div>
+				</section-->
+
 			</div>
 		</div>
 
@@ -31,10 +242,11 @@
 			// - https://revealjs.com/config/
 			Reveal.initialize({
 				hash: true,
-
+				slideNumber: 'c/t',
 				// Learn about plugins: https://revealjs.com/plugins/
 				plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
 			});
 		</script>
+
 	</body>
 </html>
