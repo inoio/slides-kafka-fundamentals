@@ -189,17 +189,6 @@
 					</section>
 
 					<section>
-						<h3>leader election - process</h3>
-
-						<ol style="font-size: 80%">
-							<li>The controller sends a request to all replicas of a partition to vote for a new leader.</li>
-							<li>Each replica checks its local state and compares it to the state of the other replicas.</li>
-							<li>The replica with the most up-to-date state is elected as the leader.</li>
-							<li>If there is a tie, the replica with the lowest ID is elected as the leader.</li>
-						</ol>
-					</section>
-
-					<section>
 						<h3>leader election - related config</h3>
 						<div>
 							<ul style="font-size: 80%">
