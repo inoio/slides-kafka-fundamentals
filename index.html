@@ -196,7 +196,7 @@
 								<li><code>min.insync.replicas</code> &ndash; helps prevent data loss in case of leader failure</li>
 								<li>
 									<code>unclean.leader.election.enable</code> &ndash; controls whether the leader can be elected from an out-of-sync replica
-									&ndash; i.e. from CAP it's AP vs CP (Kafka default: false, MSK default: true)
+									&ndash; if <code>true</code>, availability is preferred over consistency/durability (Kafka default: false, MSK default: true)
 								</li>
 							</ul>
 						</div>
