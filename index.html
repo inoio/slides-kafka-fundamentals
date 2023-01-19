@@ -131,7 +131,7 @@
 						</aside>
 					</section>
 					<section>
-						<h3>replicated logs &mdash; broker config</h3>
+						<h3>replicated logs &mdash; broker (default) config</h3>
 						<div><img width="40%" src="img/leaders-and-replicas-2.svg" alt="leaders and replicas"></div>
 						<div style="font-size: 70%">
 							<ul>
@@ -166,7 +166,7 @@
 
 					<section>
 						<h3>replicated logs &mdash; in-sync replicas (ISR)</h3>
-						<div><img width="80%" src="img/insync-replicas.svg" alt="insync-replicas"></div>
+						<div><img src="img/insync-replicas_2.svg" alt="insync-replicas"></div>
 						<div style="font-size: 80%">
 							<ul>
 								<li class="fragment fade-up"><code>min.insync.replicas</code> &ndash; the minimum number of replicas that must acknowledge a write to be considered successful, if used with "<code>acks=all</code>" (Kafka default: 1, MSK default: 2 for 3-AZ clusters, 1 for 2-AZ clusters)</li>
