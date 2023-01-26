@@ -44,6 +44,7 @@
 							It's <em>not</em> about e.g. Kafka Connect, Kafka Streams or  3rd party client libraries like spring-kafka or reactor-kafka.
 						</small>
 					</p>
+					<p><small>(For Kafka 3.x)</small></p>
 					<aside class="notes">
 						<ul>
 							<li>presentation mode = F11</li>
@@ -207,12 +208,178 @@
 					</section>
 
 				</section>
+
+
+				<section>
+					<section>
+						<h2>producers</h2>
+					</section>
+					<section style="width: 106%; margin-left: -0.5em">
+						<img style="float: left; padding-right: 0.5em" src="img/producer-flow.svg" width="28%" alt="producer flow" />
+						<h3>producer overview</h3>
+						<div>
+							<ul style="font-size: 96%">
+								<li>connect to broker(s) and cache metadata</li>
+								<li>
+									send records to broker(s) / leaders
+									<ol>
+										<li>serialize key/value</li>
+										<li>select topic partition to write to</li>
+										<li>maybe compress data</li>
+										<li>buffer/accumulate messages</li>
+										<li>send message batches</li>
+									</ol>
+								</li>
+							</ul>
+
+						</div>
+
+					</section>
+					<section>
+						<h3>connect to broker(s) and cache metadata</h3>
+						<ul style="font-size: 80%">
+							<li><code>bootstrap.servers</code> &ndash; list of host/port pairs for establishing the initial connection to the cluster. Is used to discover the full set of servers/brokers</li>
+							<li>At least 2 are recommended for fault-tolerance</li>
+							<li>The bootstrap server returns list of all brokers in the cluster and all metadata like topics, partitions, partition leader, replication factor etc.</li>
+							<li><code>metadata.max.age.ms</code> &ndash; update metadata even if there's no leadership change happening due to new brokers or topics / partitions (default: 5 min)
+							</li>
+						</ul>
+					</section>
+					<section style="width: 106%; margin-left: -0.5em">
+						<img style="float: left; padding-right: 0.8em" src="img/producerrecord.svg" width="23%" alt="producer record" />
+						<h3>producer record</h3>
+						<div>
+							<ul style="font-size: 90%; width: 70%">
+								<li>If a valid <code>partition</code> number is specified it will be used. Otherwise, the partitioner selects a partition.</li>
+								<li>If <code>timestamp</code> is not provided, the producer will stamp the record with its current time</li>
+								<li>Also <code>value</code> can be <code>null</code> &ndash; tombstone for compacted topics</li>
+							</ul>
+						</div>
+					</section>
+					<section>
+						<h3>serialize key/value</h3>
+						<ul style="font-size: 80%">
+							<li><code>key.serializer</code> &ndash; Serializer class for key, e.g. <code>...StringSerializer</code></li>
+							<li><code>value.serializer</code> &ndash; Serializer class for value, e.g. <code>...ByteArraySerializer</code></li>
+							<li>Not covered here: <a href="https://docs.confluent.io/platform/current/schema-registry/index.html">Confluent Schema Registry</a></li>
+						</ul>
+					</section>
+					<section>
+						<h3>select topic partition</h3>
+						<img src="img/select-partition.svg" width="80%" alt="select partition" />
+						<p style="font-size: 60%">Messages with the same key are written to the same partition &ndash; ordering is provided</p>
+						<aside class="notes">
+							<ul>
+								<li>Changing the number of partitions at runtime affects ordering!</li>
+							</ul>
+						</aside>
+					</section>
+					<section>
+						<h3>buffer/accumulate messages</h3>
+						<img src="img/producer-buffer.svg" width="100%" alt="producer buffer" />
+						<p style="font-size: 60%">The <code>send()</code> method is asynchronous, it adds the record to a buffer of pending record sends and immediately returns. This allows the producer to batch together individual records for efficiency.</p>
+					</section>
+					<section>
+						<h3>buffer/accumulate messages (config)</h3>
+						<img style="margin-top: 0px" src="img/producer-buffer.svg" width="40%" alt="producer buffer" />
+						<ul style="font-size: 70%">
+							<li><code>batch.size</code> &ndash; batch size in bytes, i.e. the upper bound of the batch size to be sent (default: 16 kB)</li>
+							<li><code>linger.ms</code> &ndash; time to give for batches to fill, to make batching more likely even under moderate load (default: 0)</li>
+							<li><code>buffer.memory</code> &ndash; the total amount of memory available for buffering. If records are sent faster than they can be transmitted to the server this buffer space will be exhausted (default: 32 MB)</li>
+							<li><code>max.block.ms</code> &ndash; max time to block <code>send()</code> calls when the buffer space is exhausted, after which a <code>TimeoutException</code> is thrown (default: 1 min)</li>
+						</ul>
+						<aside class="notes">
+							<ul>
+								<li>batch.size
+									<ul>
+										<li>Requests sent to brokers will contain multiple batches, one for each partition with data available to be sent.</li>
+										<li>A small batch size will make batching less common and may reduce throughput (a batch size of zero will disable batching entirely).</li>
+										<li>A very large batch size may use memory a bit more wastefully as we will always allocate a buffer of the specified batch size in anticipation of additional records.</li>
+									</ul>
+								</li>
+							</ul>
+						</aside>
+					</section>
+					<section>
+						<h3>send message batches</h3>
+						<img src="img/producer-sender-thread.svg" width="80%" alt="producer sender thread" />
+						<p style="font-size: 60%">Batches are grouped by broker and sent if either <code>batch.size</code> or <code>linger.ms</code> is reached.</p>
+					</section>
+					<section>
+						<h3>send message batches in parallel</h3>
+						<img src="img/producer-sender-thread_2.svg" width="75%" alt="producer parallel requests" />
+						<p style="font-size: 60%"><code>max.in.flight.requests.per.connection</code> controls the number of messages to be sent without any acknowledgment (default: 5)</p>
+					</section>
+					<section>
+						<h3>message batch send failures</h3>
+						<img src="img/producer-sender-thread_3.svg" width="75%" alt="producer request fails" />
+						<p style="font-size: 60%">With <code>max.in.flight.requests.per.connection > 1</code> there could be gaps if a request fails</p>
+					</section>
+					<section>
+						<h3>handling send failures (retries)</h3>
+						<img src="img/producer-sender-thread_4.svg" style="margin-top: 0px" width="70%" alt="producer request retries" />
+						<ul style="font-size: 60%">
+							<li><code>retries</code> &ndash; number of times to resend a failed request (default: <code>Integer.MAX_VALUE</code>)</li>
+							<li><code>request.timeout.ms</code> &ndash; max time the client will wait for the response (default: 30 sec)</li>
+							<li><code>delivery.timeout.ms</code> &ndash; max time for <code>send()</code> to complete (default: 2 min)</li>
+							<li>Note: with <code>max.in.flight.requests.per.connection > 1</code> and <code>retries > 0</code> message reordering could occur</li>
+						</ul>
+					</section>
+					<section>
+						<h3>handling send failures (retries)</h3>
+						<img src="img/producer-sender-thread_5.svg" width="70%" alt="producer request retries with guaranteed ordering" />
+						<p style="font-size: 60%">
+							To allow <code>retries</code> and prevent message reordering set <code>max.in.flight.requests.per.connection = 1</code>
+						</p>
+					</section>
+					<section>
+						<h3>send failure - duplicates</h3>
+						<img src="img/producer-sender-thread_6.svg" width="70%" alt="producer send failure duplicates" />
+						<p style="font-size: 60%">
+							If the response gets lost, enabled <code>retries</code> could lead to duplicate messages <br/>(<em>at-least-once</em> delivery semantics)
+						</p>
+					</section>
+					<section>
+						<h3>idempotent producer</h3>
+						<img src="img/producer-sender-thread_7.svg" style="margin-top: 0px" width="70%" alt="idempotent producer" />
+						<ul style="font-size: 60%">
+							<li>
+								<code>enable.idempotence</code> &ndash; prevents message duplication and reordering for a single producer (!),
+								to achieve <em>exactly-once</em> delivery semantics (default: <code>true</code> for Kafka 3.x)
+							</li>
+							<li>Requires <code>max.in.flight.requests.per.connection &lt;= 5</code>
+								(with message ordering preserved), <code>retries &gt; 0</code> and <code>acks='all'</code></li>
+							<li>If conflicting configurations are set and idempotence is not explicitly enabled, it is disabled. If explicitly enabled and conflicting configs are set, a <code>ConfigException</code> is thrown</li>
+							<li>Application level retries e.g. due to a app/producer crash could still lead to duplicates</li>
+						</ul>
+					</section>
+					<section>
+						<h3>message durability / consistency</h3>
+						<img src="img/producer-acks.svg" style="margin-top: 0px" width="80%" alt="producer acks" />
+						<ul style="font-size: 60%">
+							<li>
+								<code>acks</code> &ndash; number of acknowledgments the producer requires the leader to have received before considering a request complete (default: <code>all</code> for Kafka 3.x)
+							</li>
+							<li><code>acks=0</code> &ndash; do not wait for any acknowledgment</li>
+							<li><code>acks=1</code> &ndash; leader writes the record and responds without awaiting acks from followers</li>
+							<li>
+								<code>acks=all</code> &ndash; leader waits for <code>min.insync.replicas</code> to acknowledge.
+								This guarantees that the record will not be lost as long as at least one in-sync replica remains alive
+							</li>
+						</ul>
+					</section>
+
+					<section>
+						<h3>that's the producer (?)</h3>
+					</section>
+
+				</section>
+
 				<!--section>
 					<h3>don't forget configs</h3>
 					<div>
 						<ul>
 							<li><code class="foo">offsets.topic.replication.factor</code> - consumer offsets</li>
-							<li><code>min.insync.replicas</code> - producer consistency / durability</li>
 							<li><code>log.retention.hours</code> - Default:	168</li>
 						</ul>
 					</div>
