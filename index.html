@@ -250,8 +250,8 @@
 						<h3>producer record</h3>
 						<div>
 							<ul style="font-size: 90%; width: 70%">
-								<li>If a valid <code>partition</code> number is specified it will be used. Otherwise, the partitioner selects a partition.</li>
 								<li>If <code>timestamp</code> is not provided, the producer will stamp the record with its current time</li>
+								<li>Headers are useful to additionally describe the message or value, e.g. to allow consumers to decide about the deserializer, or information useful for monitoring</li>
 								<li>Also <code>value</code> can be <code>null</code> &ndash; tombstone for compacted topics</li>
 							</ul>
 						</div>
