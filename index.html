@@ -597,16 +597,6 @@
 						<h2>transactional messaging</h2>
 					</section>
 					<section>
-						<h3>transactional messaging guarantees</h3>
-						<ol style="font-size: 90%">
-							<li>Atomicity: A consumer's application should not be exposed to messages from uncommitted transactions</li>
-							<li>Durability: The broker cannot lose any committed transactions</li>
-							<li>Ordering: A transaction-aware consumer should see transactions in the original transaction-order within each partition</li>
-							<li>Interleaving: Each partition is able to accept messages from both transactional and non-transactional producers</li>
-							<li>There are no duplicate messages within transactions</li>
-						</ol>
-					</section>
-					<section>
 						<h3>transactional messaging "use cases"</h3>
 						<ol style="font-size: 90%">
 							<li>Atomic writes across multiple partitions: consumers see all or nothing</li>
@@ -615,7 +605,7 @@
 								committing offsets atomically
 							</li>
 							<li>
-								Exactly-once processing & zombie fencing: if a "zombie instance" (crashed/unavailable) is "replaced" with a new one,
+								Exactly-once processing & zombie fencing: if a "zombie instance" (unavailable/dangling) is "replaced" with a new one,
 								input topics could be processed by both instances, causing duplicates in output topics
 							</li>
 						</ol>
@@ -624,6 +614,10 @@
 								<li>
 									Atomic writes across multiple partitions: send a batch of messages to multiple partitions such that
 									either all messages in the batch are eventually visible to any consumer or none are ever visible to consumers
+								</li>
+								<li>
+									zombie fencing: a zombie instance is e.g. a producer that's temporarily partitioned from the brokers
+									or undergoing an application pause.
 								</li>
 							</ol>
 						</aside>
@@ -728,7 +722,7 @@
 							<code data-trim data-noescape>
 								Properties props = new Properties();
 								props.put("enable.idempotence", "true");
-								props.put("transactional.id", "producer-1");
+								props.put("transactional.id", stableUniqueId);
 								Producer&lt;String, String&gt; producer = new KafkaProducer&lt;&gt;(props);
 								producer.initTransactions();
 								// ...
@@ -736,17 +730,19 @@
 						</pre>
 						<ul style="font-size: 65%">
 							<li>
-								<code>transactional.id</code> &ndash; enable transaction recovery across multiple sessions of a single producer instance.
-								It would typically be derived from the shard identifier in a partitioned, stateful, application.
-								I.e. it should be unique to each producer instance running within a partitioned application.
+								<code>transactional.id</code> &ndash; unique id used for transactional delivery, is used to provide
+								continuity of transactional state across application restarts. I.e. when taking zombie instances (like network
+								partitions) as a given, for exactly-once semantics the <code>transactional.id</code> must be stable for
+								multiple producer sessions
 							</li>
 							<li>
 								<code>initTransactions()</code> &ndash; Ensures any transactions initiated by previous instances of the
 								producer with the same <code>transactional.id</code> are completed. If the previous instance had failed
 								with a transaction in progress, it will be aborted. If the last transaction had begun completion, but not
-								yet finished, this method awaits its completion.
+								yet finished, this method awaits its completion
 							</li>
 						</ul>
+
 					</section>
 
 					<section>
@@ -810,6 +806,13 @@
 									Fine-tune Kafka performance with the Kafka optimization theorem
 								</a>
 							</li>
+							<li>
+								<a href="https://www.confluent.io/blog/how-choose-number-topics-partitions-kafka-cluster/">
+									How to Choose the Number of Topics/Partitions in a Kafka Cluster?
+								</a>
+							</li>
+							<li><a href="https://strimzi.io/blog/2020/10/15/producer-tuning/">Optimizing Kafka producers</a></li>
+							<li><a href="https://strimzi.io/blog/2021/01/07/consumer-tuning/">Optimizing Kafka consumers</a></li>
 						</ul>
 					</section>
 				</section>
