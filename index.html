@@ -368,22 +368,449 @@
 							</li>
 						</ul>
 					</section>
-
 					<section>
 						<h3>that's the producer (?)</h3>
 					</section>
 
 				</section>
 
-				<!--section>
-					<h3>don't forget configs</h3>
-					<div>
+				<section>
+					<section>
+						<h2>the java consumer</h2>
+					</section>
+					<section>
+						<h3>java consumer overview</h3>
 						<ul>
-							<li><code class="foo">offsets.topic.replication.factor</code> - consumer offsets</li>
-							<li><code>log.retention.hours</code> - Default:	168</li>
+							<li>connect to broker(s) and cache metadata</li>
+							<li>subscribe to topic(s)</li>
+							<li>join consumer group</li>
+							<li>continuously: poll records from broker(s) and commit offsets</li>
 						</ul>
+						<pre style="width: 100%">
+							<code data-trim data-noescape>
+								Properties props = new Properties();
+								props.setProperty("bootstrap.servers", "localhost:9092");
+								props.setProperty("group.id", "test");
+								KafkaConsumer&lt;String, String&gt; consumer = new KafkaConsumer&lt;&gt;(props);
+								consumer.subscribe(Arrays.asList("foo", "bar"));
+								while (true) {
+									ConsumerRecords&lt;String, String&gt; records = consumer.poll(100);
+									for (ConsumerRecord&lt;String, String&gt; record : records) {
+										process(record);
+									}
+								}
+							</code>
+						</pre>
+					</section>
+					<section>
+						<h3>consumer offsets</h3>
+						<div>
+							<img src="img/consumer-offsets_2.svg" width="70%" alt="consumer offsets" />
+						</div>
+
+						<ul style="font-size: 60%">
+							<li>committed offset: where to resume from in the event of a restart</li>
+							<li>
+								<code>auto.offset.reset</code> &ndash; how to behave when no offsets have been committed,
+								or when a committed offset is no longer valid (<code>earliest</code>/<code>latest</code>/<code>none</code>, default: <code>latest</code>)
+							</li>
+						</ul>
+
+						<aside class="notes">
+							<ul>
+								<li><code>auto.offset.reset=none</code>: throw exception to the consumer if no previous offset is found for the consumer's group</li>
+							</ul>
+						</aside>
+					</section>
+					<section>
+						<h3>consumer offset management</h3>
+						<ul style="font-size: 74%">
+							<li>
+								The default <code>enable.auto.commit=true</code> means that offsets are committed automatically
+								with <code>auto.commit.interval.ms</code> (default: 5 sec)<br/>
+								<div style="font-size: 80%; background-color: darkslategrey">
+									&#9888;&#65039; For <em>at-least-once</em> delivery you must consume all data returned
+								from <code>poll()</code> before any subsequent calls, or before closing the consumer (otherwise, the
+								committed offset could get ahead of the consumed position)</div>
+							</li>
+							<li>It's also possible to "manually" <code>commitSync</code> or <code>commitAsync</code> an offset
+								<ul>
+									<li>
+										<code>commitSync</code>: the consumer is blocked until the commit request returns successfully,
+										including retries
+									</li>
+									<li>
+										<code>commitAsync</code>: send the commit request and return immediately to process the next message
+										or batch of messages
+									</li>
+								</ul>
+							</li>
+						</ul>
+						<aside class="notes">
+							code source: https://kafka.apache.org/33/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html
+						</aside>
+					</section>
+					<section>
+						<h3>consumer offset storage</h3>
+						<img src="img/consumer-committed_offsets.svg" width="45%" alt="consumer committed offsets" />
+						<ul style="font-size: 70%">
+							<li>Kafka stores offsets in a compacted topic called <code>__consumer_offsets</code></li>
+							<li><code>offsets.retention.minutes</code> &ndash; retention period (default: 7 days)</li>
+							<li>
+								Alternative: when processing to an external system, the consumer's offset can be stored together with the output (atomically),
+								to be used with <code>seek(TopicPartition, long)</code> on restart
+							</li>
+						</ul>
+					</section>
+					<section>
+						<h3>consumer offset lags</h3>
+						<img src="img/consumer-offsets_3.svg" width="55%" alt="consumer offset lag" />
+						<ul style="font-size: 65%">
+							<li>With a growing consumer lag eventually messages could get lost</li>
+							<li>Increasing the log retention time could be a temporary workaround</li>
+							<li>Adding consumers (and/or partitions) could increase throughput</li>
+							<li>Increasing fetched batches could increase throughput (with the cost of latency)
+								<ul>
+									<li><code>fetch.max.wait.ms</code> &ndash; sets a maximum threshold for time-based batching (default: 500)</li>
+									<li><code>fetch.min.bytes</code> &ndash; sets a minimum threshold for size-based batching (default: 1)</li>
+								</ul>
+							</li>
+						</ul>
+					</section>
+					<section>
+						<h3>consumer groups</h3>
+						<p style="font-size: 60%">
+							Ensure, that a single topic partition is processed by <em>1</em> consumer of the group.<br/>
+							A consumer group is identified by a group id.
+						</p>
+						<div>
+							<img src="img/consumer-groups_2.svg" width="50%" alt="2 consumer groups" />
+						</div>
+					</section>
+
+					<section>
+						<h3>consumer group rebalancing</h3>
+						<div>
+							<img src="img/consumer-group_1-consumer.svg" style="margin-left: 0.5em; margin-right: 0.5em" width="38%" alt="consumer group 1 consumer" />
+							<img src="img/consumer-group_2-consumer.svg" style="margin-left: 0.5em; margin-right: 0.5em" width="38%" alt="consumer group 2 consumer" />
+							<img src="img/consumer-group_3-consumer.svg" style="margin-left: 0.5em; margin-right: 0.5em; vertical-align: top" width="38%" alt="consumer group 3 consumer" />
+							<img src="img/consumer-group_4-consumer.svg" style="margin-left: 0.5em; margin-right: 0.5em; vertical-align: top" width="38%" alt="consumer group 4 consumer" />
+						</div>
+
+						<p style="font-size: 70%">
+							The <em>group coordinator</em> is responsible for managing<br/>
+							<span style="padding: 0.2em">a)</span> group members and
+							<span style="padding: 0.2em">b)</span> their partition assignments.
+						</p>
+
+						<aside class="notes">
+							<ul>
+								<li>Rebalancing is orchestrated by the group coordinator, involves communication with all consumers in the group</li>
+								<li>The group coordinator is chosen from <code>__consumer_offsets</code> leaders</li>
+							</ul>
+						</aside>
+					</section>
+
+					<section>
+						<h3>consumer group rebalancing</h3>
+						<div>
+							<img src="img/consumer-group_1-consumer.svg" style="margin-left: 0.5em; margin-right: 0.5em" width="25%" alt="consumer group 1 consumer" />
+							<img src="img/consumer-group_2-consumer.svg" style="margin-left: 0.5em; margin-right: 0.5em" width="25%" alt="consumer group 2 consumer" />
+						</div>
+
+						<ul style="font-size: 65%">
+							<li>In the past rebalancing was "stop the world", with Kafka 2.4 <em>incremental cooperative rebalancing</em>
+								was introduced to reduce consumption downtime
+							</li>
+							<li>
+								<code>partition.assignment.strategy</code> &ndash; a list of class names, ordered by preference,
+								of supported partition assignment strategies to distribute partition ownership (default: <code>[RangeAssignor, CooperativeStickyAssignor]</code>)
+							</li>
+							<li>
+								I.e. the default config (Kafka 3.3) uses <code>RangeAssignor</code>, but allows upgrading to
+								<code>CooperativeStickyAssignor</code> with just a single rolling bounce (removing <code>RangeAssignor</code> from the list)
+								(see also <a href="https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=177048248">KIP-726</a> to change the default)
+							</li>
+							<li>
+								For newer clusters <code>CooperativeStickyAssignor</code> should be preferred to get cooperative rebalancing
+							</li>
+							<li>
+								A nice explanation / visualization of different strategies can be found in <a href="https://chrzaszcz.dev/2021/09/kafka-assignors/">this blog post</a>
+							</li>
+						</ul>
+					</section>
+					<section>
+						<h3>group management: consumer liveness</h3>
+						<ul style="font-size: 65%">
+							<li>Each member in the group must send heartbeats to the coordinator to indicate its liveness.
+								If no heartbeats are received before the expiration of the configured session timeout, the coordinator
+								will remove this client from the group and initiate a rebalance.
+							</li>
+							<li class="fragment fade-up">
+								<code>session.timeout.ms</code> &ndash; max time that can pass without a heartbeat (default: 45 sec,
+								got increased from 10 sec for 3.0, see <a href="https://cwiki.apache.org/confluence/display/KAFKA/KIP-735%3A+Increase+default+consumer+session+timeout">KIP-735</a>)
+								<div class="fragment fade-up" style="margin-top: 0.3em; margin-bottom: 0.3em; font-size: 94%; background-color: darkslategrey">
+									&#9888;&#65039; Make sure to <code>close()</code> the consumer on shutdown to keep processing latency low!
+								</div>
+							</li>
+							<li class="fragment fade-up">
+								<code>heartbeat.interval.ms</code> &ndash; time between heartbeats sent to the consumer coordinator;
+								must be &lt; <code>session.timeout.ms</code>, recommended to be &lt; 1/3 of it;
+								also used for discovering that a rebalance is in progress
+								(default: 3 sec)
+							</li>
+							<li class="fragment fade-up">
+								<code>max.poll.interval.ms</code> &ndash; max delay between invocations of <code>poll()</code>.
+								If exceeded, the consumer is considered failed and the group will rebalance (default: 5 min)
+							</li>
+							<li class="fragment fade-up">
+								<code>max.poll.records</code> &ndash; max number of records that <code>poll()</code> will return;
+								because the consumer will only join a rebalance inside <code>poll()</code>,
+								reducing this config reduces the delay of a group rebalance (default: 500)
+							</li>
+						</ul>
+
+						<aside class="notes">
+							<ul>
+								<li><code>session.timeout.ms</code> got increased from 10 to 45 sec with Kafka 3 /
+									<a href="https://cwiki.apache.org/confluence/display/KAFKA/KIP-735%3A+Increase+default+consumer+session+timeout">KIP-735</a>
+									to be more tolerant to temporary/spurious member failures
+								</li>
+							</ul>
+						</aside>
+					</section>
+
+					<section>
+						<h3>that's the consumer (?)</h3>
+					</section>
+
+				</section>
+
+				<section>
+
+					<section>
+						<h2>transactional messaging</h2>
+					</section>
+					<section>
+						<h3>transactional messaging guarantees</h3>
+						<ol style="font-size: 90%">
+							<li>Atomicity: A consumer's application should not be exposed to messages from uncommitted transactions</li>
+							<li>Durability: The broker cannot lose any committed transactions</li>
+							<li>Ordering: A transaction-aware consumer should see transactions in the original transaction-order within each partition</li>
+							<li>Interleaving: Each partition is able to accept messages from both transactional and non-transactional producers</li>
+							<li>There are no duplicate messages within transactions</li>
+						</ol>
+					</section>
+					<section>
+						<h3>transactional messaging "use cases"</h3>
+						<ol style="font-size: 90%">
+							<li>Atomic writes across multiple partitions: consumers see all or nothing</li>
+							<li>
+								Exactly-once processing in "read-process-write" cycles <em>from</em> Kafka topics <em>to</em> Kafka topics,
+								committing offsets atomically
+							</li>
+							<li>
+								Exactly-once processing & zombie fencing: if a "zombie instance" (crashed/unavailable) is "replaced" with a new one,
+								input topics could be processed by both instances, causing duplicates in output topics
+							</li>
+						</ol>
+						<aside class="notes">
+							<ol style="font-size: 85%">
+								<li>
+									Atomic writes across multiple partitions: send a batch of messages to multiple partitions such that
+									either all messages in the batch are eventually visible to any consumer or none are ever visible to consumers
+								</li>
+							</ol>
+						</aside>
+					</section>
+
+
+					<section>
+						<h3>transactional producer</h3>
+
+						<pre style="width: 100%">
+							<code data-trim data-noescape>
+								Properties props = new Properties();
+								props.put("enable.idempotence", "true");
+								props.put("transactional.id", "producer-1");
+								Producer&lt;String, String&gt; producer = new KafkaProducer&lt;&gt;(props);
+								producer.initTransactions();
+								// ...
+								producer.beginTransaction();
+								// ...
+								producer.commitTransaction();
+							</code>
+						</pre>
+						<ul style="font-size: 75%">
+							<li>When the <code>transactional.id</code> is specified, all messages sent by the producer <em>must</em> be part of a transaction</li>
+							<li>There can be only one open transaction per producer</li>
+						</ul>
+					</section>
+
+					<section>
+						<h3>1) atomic writes across partitions</h3>
+						<pre style="width: 100%">
+							<code data-trim data-noescape>
+								try {
+									producer.beginTransaction();
+									producer.send(topic1Record);
+									producer.send(topic2Record);
+									producer.commitTransaction();
+								} catch (ProducerFencedException | OutOfOrderSequenceException) {
+								  // We can't recover, so our only option is to close and exit
+								  producer.close();
+								} catch (KafkaException e) {
+								  // For all other exceptions, just abort the transaction and try again
+								  producer.abortTransaction();
+								}
+							</code>
+						</pre>
+						<p style="font-size: 75%">
+							All messages sent between <code>beginTransaction()</code> and <code>commitTransaction()</code> will be part of a single transaction
+						</p>
+					</section>
+					<section>
+						<h3>1.1) Reading Transactional Messages</h3>
+						<ul style="font-size: 85%">
+							<li>
+								For atomic writes across partitions to work (from consumer perspective),
+								consumer <code>isolation.level</code> must be set to <code>read_committed</code> (default: <code>read_uncommitted</code>):
+								<code>poll()</code> will only return transactional messages which have been committed
+							</li>
+							<li>If set to <code>read_uncommitted</code>, <code>poll()</code> will return <em>all</em> messages, even transactional
+								messages which have been aborted</li>
+							<li>Non-transactional messages will be returned unconditionally in either mode</li>
+						</ul>
+					</section>
+
+					<section>
+						<h3>2) committing offsets in "read-process-write"</h3>
+
+						<pre style="width: 100%; font-size: 53%">
+							<code data-trim data-noescape>
+								KafkaConsumer&lt;String, String&gt; c = new KafkaConsumer&lt;&gt;(consProps);
+								KafkaProducer&lt;String, String&gt; p = new KafkaProducer&lt;&gt;(prodProps);
+								p.initTransactions();
+								while(true) {
+								  ConsumerRecords&lt;String, String&gt; inputs = c.poll(100);
+								  p.beginTransaction();
+
+								  process(inputs).forEach(p::send);
+
+								  sendOffsetsResult = p.sendOffsetsToTransaction(
+								    offsets(inputs), c.groupMetadata()
+								  );
+								  p.endTransaction();
+								}
+							</code>
+						</pre>
+						<ul style="font-size: 58%">
+							<li>
+								<code>sendOffsetsToTransaction</code> &ndash; sends a list of specified offsets to the consumer group coordinator,
+						and also marks those offsets as part of the current transaction</li>
+							<li>
+								The committed offset should be the next message your application will consume, i.e. <code>lastProcessedMessageOffset + 1</code>
+							</li>
+							<li><em>Note:</em> the consumer should have set <code>enable.auto.commit=false</code></li>
+							<li>These offsets will be committed only if the transaction is committed</li>
+						</ul>
+					</section>
+
+					<section>
+						<h3>3) exactly-once processing & zombie fencing</h3>
+
+						<pre style="width: 100%">
+							<code data-trim data-noescape>
+								Properties props = new Properties();
+								props.put("enable.idempotence", "true");
+								props.put("transactional.id", "producer-1");
+								Producer&lt;String, String&gt; producer = new KafkaProducer&lt;&gt;(props);
+								producer.initTransactions();
+								// ...
+							</code>
+						</pre>
+						<ul style="font-size: 65%">
+							<li>
+								<code>transactional.id</code> &ndash; enable transaction recovery across multiple sessions of a single producer instance.
+								It would typically be derived from the shard identifier in a partitioned, stateful, application.
+								I.e. it should be unique to each producer instance running within a partitioned application.
+							</li>
+							<li>
+								<code>initTransactions()</code> &ndash; Ensures any transactions initiated by previous instances of the
+								producer with the same <code>transactional.id</code> are completed. If the previous instance had failed
+								with a transaction in progress, it will be aborted. If the last transaction had begun completion, but not
+								yet finished, this method awaits its completion.
+							</li>
+						</ul>
+					</section>
+
+					<section>
+						<h3>that's transactional messaging (?)</h3>
+
+						<div style="font-size: 70%; background-color: darkslategrey">
+							&#9888;&#65039; <em>Disclaimer</em>: this was a high-level overview. To use it please learn more
+							and dig deeper to see how it fits your application, workload and operational model!<br/>
+							If not used correctly you might not get what you want...
+							<p>
+							Usually a more robust approach is to use <em>at-least-once</em> semantics and let consumers deduplicate.
+							</p>
+						</div>
+						<p>Further reading</p>
+						<ul style="font-size: 70%;">
+							<li>
+								<a href="https://www.confluent.io/blog/exactly-once-semantics-are-possible-heres-how-apache-kafka-does-it/">
+									Exactly-Once Semantics Are Possible: Here’s How Kafka Does It
+								</a> (06/2017)
+							</li>
+							<li>
+								<a href="https://www.confluent.io/blog/transactions-apache-kafka/">
+									Transactions in Apache Kafka
+								</a> (11/2017)
+							</li>
+							<li>
+								<a href="https://tgrez.github.io/posts/2019-04-13-kafka-transactions.html">
+									When Kafka transactions might fail
+								</a> (04/2019)
+							</li>
+							<li>
+								<a href="https://www.confluent.io/blog/simplified-robust-exactly-one-semantics-in-kafka-2-5/">
+									Improved Robustness and Usability of Exactly-Once Semantics in Apache Kafka
+								</a> (07/2020)
+							</li>
+							<li>
+								<a href="https://cwiki.apache.org/confluence/display/KAFKA/KIP-447%3A+Producer+scalability+for+exactly+once+semantics">
+									KIP-447: Producer scalability for exactly once semantics
+								</a> (05/2022)
+							</li>
+						</ul>
+					</section>
+
+				</section>
+
+				<section>
+					<section>
+						<h2>Trade-Offs</h2>
+					</section>
+					<section>
+						<h3>Trade-Offs</h3>
+						<img src="img/trade-offs_1.svg" width="50%" alt="trade-offs" />
+						<p>
+							<small>
+								(source: <a href="https://developers.redhat.com/articles/2022/05/03/fine-tune-kafka-performance-kafka-optimization-theorem#optimization_goals_for_kafka">
+									Fine-tune Kafka performance with the Kafka optimization theorem
+								</a>)
+							</small>
+						</p>
+					</section>
+				</section>
+
+				<section>
+					<div style="margin-top: 30%"></div>
+					<h3>the end</h3>
+					<div style="margin-top: 30%">
+						<small>p.s. if you found a potential improvement please submit a pull request <a href="https://github.com/inoio/slides-kafka-fundamentals/">here</a></small>
 					</div>
-				</section-->
+				</section>
 
 			</div>
 		</div>
